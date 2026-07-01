@@ -60,6 +60,10 @@ STATUS_FILE="${STATUS_DIR}/${SESSION_ID}.json"
 # --- Handle the terminal 'end' event: remove the session file -------------
 if [ "$STATUS" = "end" ]; then
     rm -f "$STATUS_FILE" 2>/dev/null
+    # Clean up any approval-queue artifacts for this session.
+    rm -f "${STATUS_DIR}/session-allow/${SESSION_ID}" 2>/dev/null
+    rm -f "${STATUS_DIR}/requests/${SESSION_ID}.json" 2>/dev/null
+    rm -f "${STATUS_DIR}/decisions/${SESSION_ID}.json" 2>/dev/null
     exit 0
 fi
 

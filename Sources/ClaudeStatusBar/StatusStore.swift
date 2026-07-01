@@ -111,6 +111,12 @@ final class StatusStore {
         statusDirectory.appendingPathComponent("approve-enabled", isDirectory: false)
     }
 
+    /// `console-status/session-allow/` — one marker file per session the user
+    /// chose to auto-approve for the rest of its run.
+    var sessionAllowDirectory: URL {
+        statusDirectory.appendingPathComponent("session-allow", isDirectory: true)
+    }
+
     /// Requests older than this are ignored/pruned — the hook that owns them has
     /// almost certainly timed out (default 5 min) and fallen back to the terminal.
     private var requestStaleThreshold: TimeInterval { 6 * 60 }
@@ -129,6 +135,33 @@ final class StatusStore {
         } else {
             try? fm.removeItem(at: approveEnabledFile)
         }
+    }
+
+    /// Grants "auto-approve the rest of this session" by dropping a marker file
+    /// the hook checks before queuing anything.
+    func allowSessionForRest(sessionId: String) {
+        let fm = FileManager.default
+        try? fm.createDirectory(at: sessionAllowDirectory, withIntermediateDirectories: true)
+        fm.createFile(atPath: sessionAllowDirectory.appendingPathComponent(sessionId).path,
+                      contents: Data())
+    }
+
+    /// Revokes a previously granted session auto-approval.
+    func revokeSessionAllow(sessionId: String) {
+        try? FileManager.default.removeItem(
+            at: sessionAllowDirectory.appendingPathComponent(sessionId))
+    }
+
+    /// The set of session ids currently marked for auto-approval.
+    func loadAllowedSessions() -> Set<String> {
+        guard let entries = try? FileManager.default.contentsOfDirectory(
+            at: sessionAllowDirectory,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        ) else {
+            return []
+        }
+        return Set(entries.map { $0.lastPathComponent })
     }
 
     /// Loads current pending approval requests, keyed by session id. Stale

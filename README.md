@@ -53,6 +53,12 @@ Click **Approve** or **Deny** and the decision is returned to Claude through its
 official permission API (`permissionDecision: allow | deny`). The dot turns 🔴
 red for any session with a pending request.
 
+**Approve — allow rest of this session:** the third option approves the current
+call *and* auto-approves every later gated call from that session, so you're not
+clicking repeatedly for one trusted run. The session's row then shows
+`· auto-approving` with a **↩︎ Stop auto-approving this session** item to revoke
+it. The grant is per-session and is cleared automatically when the session ends.
+
 **How it stays safe / unobtrusive:**
 
 - **Off by default.** With the toggle off, the hook exits instantly and your

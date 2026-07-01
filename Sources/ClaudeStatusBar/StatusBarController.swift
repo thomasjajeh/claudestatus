@@ -32,6 +32,9 @@ final class StatusBarController: NSObject, NSMenuDelegate {
     /// Pending approval requests keyed by session id, from the blocking hook.
     private var latestRequests: [String: PendingRequest] = [:]
 
+    /// Session ids the user chose to auto-approve for the rest of their run.
+    private var latestAllowed: Set<String> = []
+
     /// Signature of what is currently drawn in the bar. Used to skip redundant
     /// redraws — reassigning the button image every tick is what caused the
     /// visible flicker.
@@ -78,6 +81,7 @@ final class StatusBarController: NSObject, NSMenuDelegate {
     private func refresh() {
         latestSessions = store.loadActiveSessions()
         latestRequests = store.loadPendingRequests()
+        latestAllowed = store.loadAllowedSessions()
         updateTitle()
     }
 
@@ -161,13 +165,7 @@ final class StatusBarController: NSObject, NSMenuDelegate {
                 if let request = latestRequests[session.sessionId] {
                     addApprovalRows(for: session, request: request, to: menu)
                 } else {
-                    let item = NSMenuItem(title: rowTitle(for: session),
-                                          action: #selector(focusSession(_:)), keyEquivalent: "")
-                    item.target = self
-                    item.representedObject = session
-                    // Only clickable if we know which terminal to raise.
-                    item.isEnabled = Self.bundleIdentifier(for: session.termProgram) != nil
-                    menu.addItem(item)
+                    addSessionRow(for: session, to: menu)
                 }
             }
         }
@@ -189,8 +187,8 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         menu.addItem(quit)
     }
 
-    /// Adds a "needs approval" row plus indented Approve / Deny items for a
-    /// session the blocking hook is currently waiting on.
+    /// Adds a "needs approval" row plus indented Approve / Approve-all / Deny
+    /// items for a session the blocking hook is currently waiting on.
     private func addApprovalRows(for session: SessionStatus, request: PendingRequest, to menu: NSMenu) {
         var title = "🔴 \(session.project) — approve \(request.toolName)?"
         if !request.summary.isEmpty {
@@ -200,17 +198,41 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         head.isEnabled = false
         menu.addItem(head)
 
-        let approve = NSMenuItem(title: "✅ Approve", action: #selector(approveRequest(_:)), keyEquivalent: "")
-        approve.target = self
-        approve.representedObject = session.sessionId
-        approve.indentationLevel = 1
-        menu.addItem(approve)
+        addIndented("✅ Approve", #selector(approveRequest(_:)), session.sessionId, to: menu)
+        addIndented("✅ Approve — allow rest of this session",
+                    #selector(approveSessionAll(_:)), session.sessionId, to: menu)
+        addIndented("🛑 Deny", #selector(denyRequest(_:)), session.sessionId, to: menu)
+    }
 
-        let deny = NSMenuItem(title: "🛑 Deny", action: #selector(denyRequest(_:)), keyEquivalent: "")
-        deny.target = self
-        deny.representedObject = session.sessionId
-        deny.indentationLevel = 1
-        menu.addItem(deny)
+    /// Adds a normal (non-pending) session row: click to jump to its terminal.
+    /// If the session is set to auto-approve, notes that and offers to stop.
+    private func addSessionRow(for session: SessionStatus, to menu: NSMenu) {
+        let autoApproving = latestAllowed.contains(session.sessionId)
+        var title = rowTitle(for: session)
+        if autoApproving {
+            title += " · auto-approving"
+        }
+
+        let item = NSMenuItem(title: title, action: #selector(focusSession(_:)), keyEquivalent: "")
+        item.target = self
+        item.representedObject = session
+        // Only clickable if we know which terminal to raise.
+        item.isEnabled = Self.bundleIdentifier(for: session.termProgram) != nil
+        menu.addItem(item)
+
+        if autoApproving {
+            addIndented("↩︎ Stop auto-approving this session",
+                        #selector(stopAutoApprove(_:)), session.sessionId, to: menu)
+        }
+    }
+
+    /// Convenience: append an indented, targeted menu item carrying a session id.
+    private func addIndented(_ title: String, _ action: Selector, _ sessionId: String, to menu: NSMenu) {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+        item.target = self
+        item.representedObject = sessionId
+        item.indentationLevel = 1
+        menu.addItem(item)
     }
 
     /// Formats a single dropdown row, e.g. `🟠 macWidget — working · updated 3s ago`.
@@ -286,6 +308,23 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         store.writeDecision(sessionId: sessionId, allow: false)
         latestRequests[sessionId] = nil
         updateTitle()
+    }
+
+    /// Approve the pending call *and* auto-approve the rest of this session.
+    @objc private func approveSessionAll(_ sender: NSMenuItem) {
+        guard let sessionId = sender.representedObject as? String else { return }
+        store.allowSessionForRest(sessionId: sessionId)
+        store.writeDecision(sessionId: sessionId, allow: true)
+        latestRequests[sessionId] = nil
+        latestAllowed.insert(sessionId)
+        updateTitle()
+    }
+
+    /// Cancel a session's auto-approval; future calls will queue again.
+    @objc private func stopAutoApprove(_ sender: NSMenuItem) {
+        guard let sessionId = sender.representedObject as? String else { return }
+        store.revokeSessionAllow(sessionId: sessionId)
+        latestAllowed.remove(sessionId)
     }
 
     @objc private func toggleApprovalQueue() {

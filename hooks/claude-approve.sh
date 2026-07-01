@@ -37,7 +37,24 @@ fi
 
 command -v python3 >/dev/null 2>&1 || exit 0
 
+SESSION_ALLOW_DIR="${STATUS_DIR}/session-allow"
 mkdir -p "$REQ_DIR" "$DEC_DIR" 2>/dev/null
+
+# --- Honor an "allow rest of this session" grant -------------------------
+# If the user chose to auto-approve this session, allow immediately without
+# queuing anything. Quick session_id-only extraction.
+SID="$(printf '%s' "$PAYLOAD" | python3 -c '
+import sys, json
+try:
+    print(json.load(sys.stdin).get("session_id") or "")
+except Exception:
+    pass
+' 2>/dev/null)"
+
+if [ -n "$SID" ] && [ -f "${SESSION_ALLOW_DIR}/${SID}" ]; then
+    printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","permissionDecisionReason":"Session pre-approved from ClaudeStatusBar"}}'
+    exit 0
+fi
 
 # --- Parse payload and write the pending request in one python pass -------
 # Prints the session_id on success (empty on any failure / missing id).
