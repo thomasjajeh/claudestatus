@@ -73,3 +73,31 @@ struct SessionStatus: Codable {
         secondsSinceUpdate(now: now) > staleThreshold
     }
 }
+
+/// A pending tool-approval request written by the blocking `PreToolUse` hook
+/// (`claude-approve.sh`) while it waits for the user to Approve or Deny from the
+/// menu bar. One file per waiting session in `console-status/requests/`.
+struct PendingRequest: Codable {
+    let sessionId: String
+    let cwd: String
+    let project: String
+    /// The tool Claude wants to run, e.g. `Bash`, `Write`, `Edit`.
+    let toolName: String
+    /// A short human summary of what the tool will do (command, file path, …).
+    let summary: String
+    /// Unix epoch (seconds) when the hook created this request.
+    let createdAt: TimeInterval
+
+    enum CodingKeys: String, CodingKey {
+        case sessionId = "session_id"
+        case cwd
+        case project
+        case toolName  = "tool_name"
+        case summary
+        case createdAt = "created_at"
+    }
+
+    func secondsSinceCreated(now: Date = Date()) -> TimeInterval {
+        max(0, now.timeIntervalSince1970 - createdAt)
+    }
+}

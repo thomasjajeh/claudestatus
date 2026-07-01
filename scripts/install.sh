@@ -27,15 +27,16 @@ echo "==> Repo detected at: $REPO_DIR"
 echo "==> [1/4] Building release binary"
 ( cd "$REPO_DIR" && swift build -c release )
 
-echo "==> [2/4] Making hook script executable"
-chmod +x "$HOOK"
+echo "==> [2/4] Making hook scripts executable"
+chmod +x "$HOOK" "$REPO_DIR/hooks/claude-approve.sh"
 
 echo "==> [3/4] Merging hooks into $SETTINGS"
 mkdir -p "$HOME/.claude"
-python3 - "$SETTINGS" "$HOOK" <<'PY'
+APPROVE_HOOK="$REPO_DIR/hooks/claude-approve.sh"
+python3 - "$SETTINGS" "$HOOK" "$APPROVE_HOOK" <<'PY'
 import json, os, sys, time, shutil
 
-settings_path, hook = sys.argv[1], sys.argv[2]
+settings_path, hook, approve_hook = sys.argv[1], sys.argv[2], sys.argv[3]
 
 def cmd(status):
     return {"type": "command", "command": f"{hook} {status}"}
@@ -43,7 +44,11 @@ def cmd(status):
 hooks = {
     "SessionStart":     [{"hooks": [cmd("green")]}],
     "UserPromptSubmit": [{"hooks": [cmd("orange")]}],
-    "PreToolUse":       [{"matcher": "*", "hooks": [cmd("orange")]}],
+    "PreToolUse":       [
+        {"matcher": "*", "hooks": [cmd("orange")]},
+        {"matcher": "Bash|Write|Edit|MultiEdit|NotebookEdit",
+         "hooks": [{"type": "command", "command": approve_hook, "timeout": 310}]},
+    ],
     "PostToolUse":      [{"matcher": "*", "hooks": [cmd("orange")]}],
     "Notification":     [{"hooks": [cmd("red")]}],
     "Stop":             [{"hooks": [cmd("green")]}],

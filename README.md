@@ -30,10 +30,46 @@ supported terminals include Terminal, iTerm2, VS Code, Ghostty, WezTerm, kitty,
 Alacritty, Warp, Hyper and Tabby.
 
 > **Note / limitation:** clicking raises the terminal *application*, not the
-> exact tab/window, and it **cannot answer the prompt for you** — Claude's
-> permission prompt lives in the terminal's interactive UI and there's no
-> external API to approve/deny it. This gets you there in one click; you still
-> confirm in the terminal.
+> exact tab/window. If you'd rather answer Claude's Yes/No **without** switching
+> to the terminal at all, see the optional approval queue below.
+
+---
+
+## Approving tool calls from the menu bar (optional)
+
+You can answer Claude's "may I run this?" permission decision **directly from the
+dropdown**, without switching to the terminal. This is **off by default** — flip
+it on via the **"Approve tool calls from here"** toggle in the dropdown.
+
+When enabled, a blocking `PreToolUse` hook pauses the tool and the dropdown shows:
+
+```
+🔴 macWidget — approve Bash?  rm -rf build
+     ✅ Approve
+     🛑 Deny
+```
+
+Click **Approve** or **Deny** and the decision is returned to Claude through its
+official permission API (`permissionDecision: allow | deny`). The dot turns 🔴
+red for any session with a pending request.
+
+**How it stays safe / unobtrusive:**
+
+- **Off by default.** With the toggle off, the hook exits instantly and your
+  normal permission flow (including `skipDangerousModePermissionPrompt` and your
+  allow-list) is completely untouched.
+- **Scoped to `Bash`, `Write`, `Edit`, `MultiEdit`, `NotebookEdit`** — read-only
+  tools are never queued.
+- **5-minute timeout.** If you don't click in time, the hook returns `ask` and
+  Claude falls back to the normal terminal prompt — a session never hangs.
+
+> The hook `timeout` in `settings.json` (310s) must stay **≥** the script's
+> `CLAUDE_APPROVE_TIMEOUT` (default 300s), or Claude will kill the hook before
+> your click lands.
+
+**Caveat — when the queue is ON it intercepts *every* matching tool call**, so
+tools you'd normally never be asked about will wait for a click. Turn it on when
+you want a GUI approval queue; leave it off for hands-off sessions.
 
 ---
 
@@ -234,7 +270,8 @@ macWidget/
 │       ├── StatusStore.swift        # Reads/prunes status files from disk
 │       └── StatusBarController.swift# NSStatusItem, polling timer, menu
 ├── hooks/
-│   ├── claude-status.sh             # Hook writer script (jq-optional)
+│   ├── claude-status.sh             # Status writer script (jq-optional)
+│   ├── claude-approve.sh            # Blocking PreToolUse approval hook (optional queue)
 │   └── settings-hooks.json          # Ready-to-merge Claude Code hooks config
 ├── scripts/
 │   ├── install.sh                   # One-shot install (build + hooks + auto-start)

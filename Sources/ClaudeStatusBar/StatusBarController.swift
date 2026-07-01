@@ -29,6 +29,9 @@ final class StatusBarController: NSObject, NSMenuDelegate {
     /// The most recently loaded sessions; read by the menu delegate on open.
     private var latestSessions: [SessionStatus] = []
 
+    /// Pending approval requests keyed by session id, from the blocking hook.
+    private var latestRequests: [String: PendingRequest] = [:]
+
     /// Signature of what is currently drawn in the bar. Used to skip redundant
     /// redraws — reassigning the button image every tick is what caused the
     /// visible flicker.
@@ -74,24 +77,32 @@ final class StatusBarController: NSObject, NSMenuDelegate {
     /// Re-reads the sessions from disk and updates the bar if anything changed.
     private func refresh() {
         latestSessions = store.loadActiveSessions()
-        updateTitle(with: latestSessions)
+        latestRequests = store.loadPendingRequests()
+        updateTitle()
+    }
+
+    /// The state to display for a session: a pending approval forces red,
+    /// otherwise the session's own reported status.
+    private func effectiveState(for session: SessionStatus) -> SessionState {
+        latestRequests[session.sessionId] != nil ? .red : session.status
     }
 
     // MARK: - Menu bar dots
 
     /// Draws one colored dot per session (or a dim ring when idle), but only
     /// when the set of states has actually changed since the last render.
-    private func updateTitle(with sessions: [SessionStatus]) {
+    private func updateTitle() {
         guard let button = statusItem.button else { return }
 
-        let signature = sessions.isEmpty
+        let states = latestSessions.map { effectiveState(for: $0) }
+        let signature = states.isEmpty
             ? "idle"
-            : sessions.map { $0.status.rawValue }.joined(separator: ",")
+            : states.map { $0.rawValue }.joined(separator: ",")
 
         guard signature != renderedSignature else { return }
         renderedSignature = signature
 
-        button.image = Self.dotsImage(for: sessions.map { $0.status })
+        button.image = Self.dotsImage(for: states)
     }
 
     /// Renders a horizontal row of filled circles into an `NSImage`. When there
@@ -147,21 +158,59 @@ final class StatusBarController: NSObject, NSMenuDelegate {
             menu.addItem(header)
 
             for session in latestSessions {
-                let item = NSMenuItem(title: rowTitle(for: session),
-                                      action: #selector(focusSession(_:)), keyEquivalent: "")
-                item.target = self
-                item.representedObject = session
-                // Only clickable if we know which terminal to raise.
-                item.isEnabled = Self.bundleIdentifier(for: session.termProgram) != nil
-                menu.addItem(item)
+                if let request = latestRequests[session.sessionId] {
+                    addApprovalRows(for: session, request: request, to: menu)
+                } else {
+                    let item = NSMenuItem(title: rowTitle(for: session),
+                                          action: #selector(focusSession(_:)), keyEquivalent: "")
+                    item.target = self
+                    item.representedObject = session
+                    // Only clickable if we know which terminal to raise.
+                    item.isEnabled = Self.bundleIdentifier(for: session.termProgram) != nil
+                    menu.addItem(item)
+                }
             }
         }
+
+        menu.addItem(.separator())
+
+        // Approval-queue toggle. Off by default; when on, gated tool calls wait
+        // for an Approve/Deny click here instead of prompting in the terminal.
+        let toggle = NSMenuItem(title: "Approve tool calls from here",
+                                action: #selector(toggleApprovalQueue), keyEquivalent: "")
+        toggle.target = self
+        toggle.state = store.isApprovalEnabled() ? .on : .off
+        menu.addItem(toggle)
 
         menu.addItem(.separator())
 
         let quit = NSMenuItem(title: "Quit", action: #selector(quitApp), keyEquivalent: "q")
         quit.target = self
         menu.addItem(quit)
+    }
+
+    /// Adds a "needs approval" row plus indented Approve / Deny items for a
+    /// session the blocking hook is currently waiting on.
+    private func addApprovalRows(for session: SessionStatus, request: PendingRequest, to menu: NSMenu) {
+        var title = "🔴 \(session.project) — approve \(request.toolName)?"
+        if !request.summary.isEmpty {
+            title += "  \(request.summary)"
+        }
+        let head = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        head.isEnabled = false
+        menu.addItem(head)
+
+        let approve = NSMenuItem(title: "✅ Approve", action: #selector(approveRequest(_:)), keyEquivalent: "")
+        approve.target = self
+        approve.representedObject = session.sessionId
+        approve.indentationLevel = 1
+        menu.addItem(approve)
+
+        let deny = NSMenuItem(title: "🛑 Deny", action: #selector(denyRequest(_:)), keyEquivalent: "")
+        deny.target = self
+        deny.representedObject = session.sessionId
+        deny.indentationLevel = 1
+        menu.addItem(deny)
     }
 
     /// Formats a single dropdown row, e.g. `🟠 macWidget — working · updated 3s ago`.
@@ -219,6 +268,28 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         } else {
             return "\(total / 3600)h"
         }
+    }
+
+    // MARK: - Approval actions
+
+    @objc private func approveRequest(_ sender: NSMenuItem) {
+        guard let sessionId = sender.representedObject as? String else { return }
+        store.writeDecision(sessionId: sessionId, allow: true)
+        // Drop it from our local view immediately so the dot/menu update without
+        // waiting for the next poll.
+        latestRequests[sessionId] = nil
+        updateTitle()
+    }
+
+    @objc private func denyRequest(_ sender: NSMenuItem) {
+        guard let sessionId = sender.representedObject as? String else { return }
+        store.writeDecision(sessionId: sessionId, allow: false)
+        latestRequests[sessionId] = nil
+        updateTitle()
+    }
+
+    @objc private func toggleApprovalQueue() {
+        store.setApprovalEnabled(!store.isApprovalEnabled())
     }
 
     // MARK: - Actions

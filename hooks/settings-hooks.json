@@ -29,6 +29,16 @@
             "command": "/Users/thomasjajeh/Workspace/macWidget/hooks/claude-status.sh orange"
           }
         ]
+      },
+      {
+        "matcher": "Bash|Write|Edit|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/thomasjajeh/Workspace/macWidget/hooks/claude-approve.sh",
+            "timeout": 310
+          }
+        ]
       }
     ],
     "PostToolUse": [

@@ -93,4 +93,89 @@ final class StatusStore {
         guard let data = try? Data(contentsOf: url) else { return nil }
         return try? decoder.decode(SessionStatus.self, from: data)
     }
+
+    // MARK: - Approval queue
+
+    /// `console-status/requests/` — pending tool-approval requests.
+    var requestsDirectory: URL {
+        statusDirectory.appendingPathComponent("requests", isDirectory: true)
+    }
+
+    /// `console-status/decisions/` — Approve/Deny decisions written by the app.
+    var decisionsDirectory: URL {
+        statusDirectory.appendingPathComponent("decisions", isDirectory: true)
+    }
+
+    /// `console-status/approve-enabled` — presence toggles the approval queue on.
+    var approveEnabledFile: URL {
+        statusDirectory.appendingPathComponent("approve-enabled", isDirectory: false)
+    }
+
+    /// Requests older than this are ignored/pruned — the hook that owns them has
+    /// almost certainly timed out (default 5 min) and fallen back to the terminal.
+    private var requestStaleThreshold: TimeInterval { 6 * 60 }
+
+    /// Whether the approval queue is currently enabled.
+    func isApprovalEnabled() -> Bool {
+        FileManager.default.fileExists(atPath: approveEnabledFile.path)
+    }
+
+    /// Turns the approval queue on/off by creating/removing the sentinel file.
+    func setApprovalEnabled(_ enabled: Bool) {
+        let fm = FileManager.default
+        if enabled {
+            ensureDirectoryExists()
+            fm.createFile(atPath: approveEnabledFile.path, contents: Data())
+        } else {
+            try? fm.removeItem(at: approveEnabledFile)
+        }
+    }
+
+    /// Loads current pending approval requests, keyed by session id. Stale
+    /// requests (see `requestStaleThreshold`) are skipped and their files removed.
+    func loadPendingRequests(now: Date = Date()) -> [String: PendingRequest] {
+        let fm = FileManager.default
+        guard let entries = try? fm.contentsOfDirectory(
+            at: requestsDirectory,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        ) else {
+            return [:]
+        }
+
+        var result: [String: PendingRequest] = [:]
+        for url in entries where url.pathExtension.lowercased() == "json" {
+            guard let data = try? Data(contentsOf: url),
+                  let req = try? decoder.decode(PendingRequest.self, from: data) else { continue }
+            if req.secondsSinceCreated(now: now) > requestStaleThreshold {
+                try? fm.removeItem(at: url)
+                continue
+            }
+            result[req.sessionId] = req
+        }
+        return result
+    }
+
+    /// Writes an Approve/Deny decision for a session; the blocking hook is
+    /// polling for exactly this file and will return it to Claude.
+    func writeDecision(sessionId: String, allow: Bool) {
+        let fm = FileManager.default
+        try? fm.createDirectory(at: decisionsDirectory, withIntermediateDirectories: true)
+        let payload = Data("{\"decision\":\"\(allow ? "allow" : "deny")\"}".utf8)
+        let dest = decisionsDirectory.appendingPathComponent("\(sessionId).json")
+        let tmp = decisionsDirectory.appendingPathComponent(".\(sessionId).tmp")
+        // Write to a temp file then move into place so the hook never reads a
+        // half-written decision.
+        guard (try? payload.write(to: tmp)) != nil else {
+            try? payload.write(to: dest)
+            return
+        }
+        try? fm.removeItem(at: dest)
+        do {
+            try fm.moveItem(at: tmp, to: dest)
+        } catch {
+            try? payload.write(to: dest)
+            try? fm.removeItem(at: tmp)
+        }
+    }
 }
