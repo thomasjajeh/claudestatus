@@ -80,6 +80,11 @@ fi
 PROJECT="$(basename "$CWD")"
 UPDATED_AT="$(date +%s)"
 
+# Which terminal app this session runs in, so the menu bar app can bring it to
+# the front when clicked. $TERM_PROGRAM is set by the terminal and inherited by
+# this hook subprocess (e.g. "iTerm.app", "Apple_Terminal", "vscode", "ghostty").
+TERM_PROG="${TERM_PROGRAM:-}"
+
 # Ensure the status directory exists.
 mkdir -p "$STATUS_DIR" 2>/dev/null
 
@@ -98,11 +103,12 @@ if command -v jq >/dev/null 2>&1; then
         --arg status "$STATUS" \
         --arg cwd "$CWD" \
         --arg project "$PROJECT" \
+        --arg term "$TERM_PROG" \
         --argjson updated "$UPDATED_AT" \
-        '{session_id: $sid, status: $status, cwd: $cwd, project: $project, updated_at: $updated}' \
+        '{session_id: $sid, status: $status, cwd: $cwd, project: $project, term_program: $term, updated_at: $updated}' \
         > "$TMP_FILE" 2>/dev/null
 elif command -v python3 >/dev/null 2>&1; then
-    SESSION_ID="$SESSION_ID" STATUS="$STATUS" CWD="$CWD" PROJECT="$PROJECT" UPDATED_AT="$UPDATED_AT" \
+    SESSION_ID="$SESSION_ID" STATUS="$STATUS" CWD="$CWD" PROJECT="$PROJECT" TERM_PROG="$TERM_PROG" UPDATED_AT="$UPDATED_AT" \
     python3 -c '
 import os, json
 obj = {
@@ -110,6 +116,7 @@ obj = {
     "status": os.environ["STATUS"],
     "cwd": os.environ["CWD"],
     "project": os.environ["PROJECT"],
+    "term_program": os.environ.get("TERM_PROG", ""),
     "updated_at": int(os.environ["UPDATED_AT"]),
 }
 print(json.dumps(obj))
@@ -117,8 +124,8 @@ print(json.dumps(obj))
 else
     # Last-resort fallback with no JSON tooling. Values here are machine-derived
     # (session_id, epoch) or paths; adequate for this local-only status file.
-    printf '{"session_id":"%s","status":"%s","cwd":"%s","project":"%s","updated_at":%s}\n' \
-        "$SESSION_ID" "$STATUS" "$CWD" "$PROJECT" "$UPDATED_AT" > "$TMP_FILE" 2>/dev/null
+    printf '{"session_id":"%s","status":"%s","cwd":"%s","project":"%s","term_program":"%s","updated_at":%s}\n' \
+        "$SESSION_ID" "$STATUS" "$CWD" "$PROJECT" "$TERM_PROG" "$UPDATED_AT" > "$TMP_FILE" 2>/dev/null
 fi
 
 mv -f "$TMP_FILE" "$STATUS_FILE" 2>/dev/null

@@ -16,9 +16,24 @@ the clock):
 > needs your attention. RED means Claude is actively blocked and waiting for you
 > to respond or approve something.
 
-Clicking the menu bar item opens a dropdown listing every active session,
-labeled by its project folder, with its current state and how long ago it
-updated, plus a **Quit** item. When there are no sessions, a dim ⚪️ is shown.
+The dots are drawn as crisp vector circles (not emoji), so they render in full
+color and never flicker — the bar only redraws when a session's state actually
+changes. Clicking the menu bar item opens a dropdown listing every active
+session, labeled by its project folder, with its current state and how long ago
+it updated, plus a **Quit** item. When there are no sessions, a dim outlined
+ring is shown.
+
+**Jump to a session:** click any row in the dropdown to bring that session's
+terminal app to the front — handy when a 🔴 session is blocked and you want to
+get to it fast. The hook records each session's terminal (`$TERM_PROGRAM`);
+supported terminals include Terminal, iTerm2, VS Code, Ghostty, WezTerm, kitty,
+Alacritty, Warp, Hyper and Tabby.
+
+> **Note / limitation:** clicking raises the terminal *application*, not the
+> exact tab/window, and it **cannot answer the prompt for you** — Claude's
+> permission prompt lives in the terminal's interactive UI and there's no
+> external API to approve/deny it. This gets you there in one click; you still
+> confirm in the terminal.
 
 ---
 
@@ -58,12 +73,59 @@ Status file shape:
 
 ---
 
-## Setup
+## Requirements
+
+- macOS 13 (Ventura) or later.
+- A Swift toolchain — install the Xcode Command Line Tools if you don't have
+  one: `xcode-select --install`. Verify with `swift --version`.
+- Claude Code (the `claude` CLI).
+- `python3` (ships with macOS). `jq` is optional.
+
+---
+
+## Quick install (recommended)
+
+Clone the repo anywhere, then run the installer. It auto-detects the checkout
+location — **no path editing required** — builds the app, wires up the Claude
+Code hooks, and installs the auto-start LaunchAgent:
+
+```bash
+git clone https://github.com/thomasjajeh/claudestatus.git
+cd claudestatus
+./scripts/install.sh
+```
+
+That single command:
+
+1. Builds the release binary (`.build/release/ClaudeStatusBar`).
+2. Makes `hooks/claude-status.sh` executable.
+3. Merges the hooks into `~/.claude/settings.json` with the correct absolute
+   paths (backing up any existing file to `settings.json.bak.<timestamp>`).
+4. Writes `~/Library/LaunchAgents/global.headfirst.claudestatusbar.plist` and
+   loads it, so the app runs now **and** starts automatically at every login.
+
+Then **open a new Claude Code session** — hooks only apply to sessions started
+after `settings.json` is updated — and a colored dot appears in your menu bar.
+
+To remove everything (LaunchAgent, hooks, status files):
+
+```bash
+./scripts/uninstall.sh
+```
+
+> The installer is safe to re-run — e.g. after `git pull` + `swift build -c
+> release`, just run `./scripts/install.sh` again to reload the new binary.
+
+---
+
+## Manual setup
+
+If you'd rather do it by hand instead of running `scripts/install.sh`:
 
 ### 1. Build the app
 
 ```bash
-cd /Users/thomasjajeh/Workspace/macWidget
+cd /path/to/claudestatus     # wherever you cloned it
 swift build -c release
 ```
 
@@ -81,14 +143,19 @@ chmod +x hooks/claude-status.sh
 Merge the contents of [`hooks/settings-hooks.json`](hooks/settings-hooks.json)
 into your `~/.claude/settings.json` under the top-level `"hooks"` key.
 
-**Important:** the snippet uses an absolute path to the script:
+**Important:** the snippet uses a placeholder absolute path to the script:
 
 ```
 /Users/thomasjajeh/Workspace/macWidget/hooks/claude-status.sh
 ```
 
-If you cloned this repo elsewhere, replace that path everywhere it appears in
-the snippet with the absolute path to *your* `hooks/claude-status.sh`.
+Since you almost certainly cloned this repo elsewhere, replace that path
+everywhere it appears with the absolute path to *your* `hooks/claude-status.sh`.
+Get it with:
+
+```bash
+echo "$(pwd)/hooks/claude-status.sh"
+```
 
 The event → status mapping is:
 
@@ -126,14 +193,30 @@ cp launchagent/global.headfirst.claudestatusbar.plist ~/Library/LaunchAgents/
 launchctl load ~/Library/LaunchAgents/global.headfirst.claudestatusbar.plist
 ```
 
-The plist points at `.build/release/ClaudeStatusBar`. If your project lives at a
-different path, edit the `ProgramArguments` path in the plist before copying it.
+The template plist points at `/Users/thomasjajeh/Workspace/macWidget/.build/release/ClaudeStatusBar`.
+**Edit the `ProgramArguments` path** to your own absolute
+`.build/release/ClaudeStatusBar` before copying it. The template uses
+`RunAtLoad: true` + `KeepAlive: false` — it starts at login, and the dropdown's
+**Quit** item works (with `KeepAlive: true`, launchd would relaunch the app the
+instant you quit it).
+
+After rebuilding (`swift build -c release`) you must reload the agent for the
+new binary to take effect:
+
+```bash
+launchctl unload ~/Library/LaunchAgents/global.headfirst.claudestatusbar.plist
+launchctl load   ~/Library/LaunchAgents/global.headfirst.claudestatusbar.plist
+```
 
 To stop / uninstall the LaunchAgent:
 
 ```bash
 launchctl unload ~/Library/LaunchAgents/global.headfirst.claudestatusbar.plist
+rm ~/Library/LaunchAgents/global.headfirst.claudestatusbar.plist
 ```
+
+> **Logs** (for troubleshooting) go to `/tmp/claudestatusbar.out.log` and
+> `/tmp/claudestatusbar.err.log`.
 
 ---
 
@@ -154,6 +237,8 @@ macWidget/
 │   ├── claude-status.sh             # Hook writer script (jq-optional)
 │   └── settings-hooks.json          # Ready-to-merge Claude Code hooks config
 ├── scripts/
+│   ├── install.sh                   # One-shot install (build + hooks + auto-start)
+│   ├── uninstall.sh                 # Reverse the installer
 │   └── run.sh                       # Build + run helper
 └── launchagent/
     └── global.headfirst.claudestatusbar.plist  # Auto-start-at-login template

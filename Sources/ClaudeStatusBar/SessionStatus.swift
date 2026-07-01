@@ -42,6 +42,10 @@ struct SessionStatus: Codable {
     let status: SessionState
     let cwd: String
     let project: String
+    /// The terminal app the session runs in (from `$TERM_PROGRAM`), used to
+    /// bring that terminal to the front when the row is clicked. May be empty
+    /// or absent for older status files.
+    let termProgram: String?
     /// Unix epoch (seconds) recording when the hook last updated this session.
     let updatedAt: TimeInterval
 
@@ -50,6 +54,7 @@ struct SessionStatus: Codable {
         case status
         case cwd
         case project
+        case termProgram = "term_program"
         case updatedAt  = "updated_at"
     }
 
