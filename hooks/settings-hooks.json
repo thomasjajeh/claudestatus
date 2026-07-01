@@ -1,0 +1,76 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/thomasjajeh/Workspace/macWidget/hooks/claude-status.sh green"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/thomasjajeh/Workspace/macWidget/hooks/claude-status.sh orange"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/thomasjajeh/Workspace/macWidget/hooks/claude-status.sh orange"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/thomasjajeh/Workspace/macWidget/hooks/claude-status.sh orange"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/thomasjajeh/Workspace/macWidget/hooks/claude-status.sh red"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/thomasjajeh/Workspace/macWidget/hooks/claude-status.sh green"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/thomasjajeh/Workspace/macWidget/hooks/claude-status.sh end"
+          }
+        ]
+      }
+    ]
+  }
+}

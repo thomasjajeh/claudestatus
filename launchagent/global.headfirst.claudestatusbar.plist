@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  LaunchAgent template for auto-starting ClaudeStatusBar at login.
+
+  SETUP:
+    1. Build the release binary:
+         swift build -c release
+    2. Replace the ProgramArguments path below if your project lives elsewhere
+       (it points at .build/release/ClaudeStatusBar under the project root).
+    3. Copy this file to ~/Library/LaunchAgents/ :
+         cp launchagent/global.headfirst.claudestatusbar.plist \
+            ~/Library/LaunchAgents/
+    4. Load it:
+         launchctl load ~/Library/LaunchAgents/global.headfirst.claudestatusbar.plist
+    5. To stop / uninstall:
+         launchctl unload ~/Library/LaunchAgents/global.headfirst.claudestatusbar.plist
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>global.headfirst.claudestatusbar</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/thomasjajeh/Workspace/macWidget/.build/release/ClaudeStatusBar</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/claudestatusbar.out.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/tmp/claudestatusbar.err.log</string>
+</dict>
+</plist>
